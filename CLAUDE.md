@@ -103,7 +103,9 @@ bun test github-data-fetcher  # Run tests matching pattern
 
 ## OAuth Authentication Implementation
 
-The action supports OAuth authentication for Claude Max subscribers:
+The action supports OAuth authentication for Claude Max subscribers.
+
+**Note**: OAuth support currently uses `grll/claude-code-base-action` (a fork) instead of the official `anthropics/claude-code-base-action` until OAuth is officially supported.
 
 ### Key Files
 - `.github/workflows/claude-oauth-login.yml`: OAuth login workflow for initial authentication

@@ -35,7 +35,9 @@ This command will guide you through setting up the GitHub app and required secre
 
 ### OAuth Setup (Claude Max Subscribers)
 
-Claude Max subscribers can use their subscription in GitHub Actions through OAuth authentication:
+Claude Max subscribers can use their subscription in GitHub Actions through OAuth authentication.
+
+**Note**: OAuth support currently requires using a forked version of the base action. This will be updated once the official action supports OAuth.
 
 #### Option 1: Use OAuth Login Workflow (Recommended)
 1. Install the Claude GitHub app to your repository: https://github.com/apps/claude

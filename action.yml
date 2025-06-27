@@ -209,7 +209,7 @@ runs:
     - name: Run Claude Code
       id: claude-code
       if: steps.prepare.outputs.contains_trigger == 'true'
-      uses: anthropics/claude-code-base-action@b4eb3d828032960a809c894c4177fe412c91d498 # v0.0.27
+      uses: grll/claude-code-base-action@2a39af4aa64ec9820abb60cf4dea094225e84e48 # Fork with OAuth support
       with:
         prompt_file: ${{ runner.temp }}/claude-prompts/claude-prompt.txt
         allowed_tools: ${{ env.ALLOWED_TOOLS }}
