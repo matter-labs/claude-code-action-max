@@ -1,0 +1,221 @@
+name: Claude OAuth Login
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization_code:
+        description: 'Authorization code from Claude OAuth (leave empty to generate URL)'
+        required: false
+        type: string
+
+jobs:
+  oauth-login:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.11
+
+      - name: Generate OAuth URL or Process Code
+        run: |
+          if [ -z "${{ inputs.authorization_code }}" ]; then
+            # No code provided, generate URL
+            cat << 'EOF' > oauth_url_generator.ts
+            #!/usr/bin/env bun
+
+            import { randomBytes } from 'crypto';
+            import { createHash } from 'crypto';
+
+            const OAUTH_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize';
+            const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+            const REDIRECT_URI = 'https://console.anthropic.com/oauth/code/callback';
+
+            function generateCodeChallenge(): { verifier: string; challenge: string } {
+              const verifier = randomBytes(32).toString('base64url');
+              const challenge = createHash('sha256')
+                .update(verifier)
+                .digest('base64url');
+
+              return { verifier, challenge };
+            }
+
+            function generateLoginUrl(): string {
+              const state = randomBytes(32).toString('hex');
+              const { verifier, challenge } = generateCodeChallenge();
+
+              // Save state and verifier for later use
+              console.error(`State: ${state}`);
+              console.error(`Code Verifier: ${verifier}`);
+
+              const params = new URLSearchParams({
+                'code': 'true',
+                'client_id': CLIENT_ID,
+                'response_type': 'code',
+                'redirect_uri': REDIRECT_URI,
+                'scope': 'org:create_api_key user:profile user:inference',
+                'code_challenge': challenge,
+                'code_challenge_method': 'S256',
+                'state': state
+              });
+
+              return `${OAUTH_AUTHORIZE_URL}?${params.toString()}`;
+            }
+
+            console.log(generateLoginUrl());
+            EOF
+
+            chmod +x oauth_url_generator.ts
+            oauth_url=$(bun oauth_url_generator.ts 2>oauth_state.txt)
+
+            echo "## 🔐 Claude OAuth Login Instructions" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Step 1: Complete OAuth Authorization" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. Click this link to authenticate: [$oauth_url]($oauth_url)" >> $GITHUB_STEP_SUMMARY
+            echo "2. Log in to Anthropic and authorize the application" >> $GITHUB_STEP_SUMMARY
+            echo "3. Copy the authorization code from the redirect page" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Step 2: Run Workflow Again" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. Go to the [Actions tab](${{ github.server_url }}/${{ github.repository }}/actions/workflows/claude-oauth-login.yml)" >> $GITHUB_STEP_SUMMARY
+            echo "2. Click 'Run workflow'" >> $GITHUB_STEP_SUMMARY
+            echo "3. Paste the authorization code in the input field" >> $GITHUB_STEP_SUMMARY
+            echo "4. Click 'Run workflow' to process the code" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Important:** The authorization code expires in 10 minutes!" >> $GITHUB_STEP_SUMMARY
+
+            # Also output to logs
+            echo "=================================================="
+            echo "No authorization code provided."
+            echo "Please visit the following URL to authenticate:"
+            echo "$oauth_url"
+            echo ""
+            echo "After authorization, run this workflow again with the code."
+            echo "=================================================="
+
+            # Save state information as artifact
+            echo "## OAuth State Information" > oauth_state_info.md
+            echo "" >> oauth_state_info.md
+            echo "Generated at: $(date)" >> oauth_state_info.md
+            echo "" >> oauth_state_info.md
+            echo "\`\`\`" >> oauth_state_info.md
+            cat oauth_state.txt >> oauth_state_info.md
+            echo "\`\`\`" >> oauth_state_info.md
+
+          else
+            # Code provided, exchange it for tokens
+            echo "## ✅ Authorization Code Received" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Processing authorization code..." >> $GITHUB_STEP_SUMMARY
+
+            # Create token exchange script
+            cat << 'EOF' > exchange_code.ts
+            #!/usr/bin/env bun
+
+            const OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
+            const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+            const REDIRECT_URI = 'https://console.anthropic.com/oauth/code/callback';
+
+            interface TokenResponse {
+              access_token: string;
+              refresh_token: string;
+              expires_in: number;
+              scope?: string;
+            }
+
+            async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<void> {
+              try {
+                const response = await fetch(OAUTH_TOKEN_URL, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    grant_type: 'authorization_code',
+                    code: code,
+                    client_id: CLIENT_ID,
+                    redirect_uri: REDIRECT_URI,
+                    code_verifier: codeVerifier,
+                  }),
+                });
+
+                if (response.ok) {
+                  const data: TokenResponse = await response.json();
+                  const expiresAt = (Math.floor(Date.now() / 1000) + data.expires_in) * 1000;
+
+                  // Create credentials file in Claude format
+                  const credentials = {
+                    claudeAiOauth: {
+                      accessToken: data.access_token,
+                      refreshToken: data.refresh_token,
+                      expiresAt: expiresAt,
+                      scopes: data.scope ? data.scope.split(' ') : ['user:inference', 'user:profile'],
+                      isMax: true,
+                    }
+                  };
+
+                  console.log(JSON.stringify(credentials, null, 2));
+
+                  // Also output for GitHub Actions
+                  console.error('::add-mask::' + data.access_token);
+                  console.error('::add-mask::' + data.refresh_token);
+                  console.error(`CLAUDE_ACCESS_TOKEN=${data.access_token}`);
+                  console.error(`CLAUDE_REFRESH_TOKEN=${data.refresh_token}`);
+                  console.error(`CLAUDE_EXPIRES_AT=${expiresAt}`);
+
+                } else {
+                  const errorText = await response.text();
+                  console.error(`Token exchange failed: ${response.status} - ${errorText}`);
+                  process.exit(1);
+                }
+              } catch (error) {
+                console.error(`Error during token exchange: ${error}`);
+                process.exit(1);
+              }
+            }
+
+            const code = process.argv[2];
+            const codeVerifier = process.argv[3];
+
+            if (!code || !codeVerifier) {
+              console.error('Usage: bun exchange_code.ts <code> <code_verifier>');
+              process.exit(1);
+            }
+
+            exchangeCodeForTokens(code, codeVerifier);
+            EOF
+
+            # Note: In production, you'd need to retrieve the code_verifier from where it was stored
+            # For now, this requires manual input of the code_verifier
+            echo "**Note:** You need to provide the code_verifier from the initial OAuth request" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Authorization code received. To complete the exchange, you'll need:" >> $GITHUB_STEP_SUMMARY
+            echo "1. The code_verifier from the initial OAuth request" >> $GITHUB_STEP_SUMMARY
+            echo "2. Run the token exchange manually with both values" >> $GITHUB_STEP_SUMMARY
+
+            # Save the auth code for reference
+            echo "Authorization Code: ${{ inputs.authorization_code }}" > auth_code.txt
+          fi
+
+      - name: Upload OAuth State
+        if: inputs.authorization_code == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: oauth-state-${{ github.run_id }}
+          path: |
+            oauth_state_info.md
+            oauth_state.txt
+          retention-days: 1
+
+      - name: Upload Auth Code
+        if: inputs.authorization_code != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-code-${{ github.run_id }}
+          path: auth_code.txt
+          retention-days: 1

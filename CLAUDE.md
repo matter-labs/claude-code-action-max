@@ -1,58 +1,129 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Tools
 
 - Runtime: Bun 1.2.11
+- TypeScript with strict mode enabled
+- Prettier for code formatting
 
 ## Common Development Tasks
 
-### Available npm/bun scripts from package.json:
-
 ```bash
-# Test
-bun test
+# Testing
+bun test                 # Run all tests
+bun test <pattern>       # Run specific test files
 
-# Formatting
-bun run format          # Format code with prettier
-bun run format:check    # Check code formatting
+# Formatting & Linting
+bun run format           # Format code with prettier
+bun run format:check     # Check code formatting
+bun run typecheck        # TypeScript type checking (tsc --noEmit)
+
+# Git hooks
+bun run install-hooks    # Install git hooks for formatting
 ```
 
 ## Architecture Overview
 
-This is a GitHub Action that enables Claude to interact with GitHub PRs and issues. The action:
+This GitHub Action enables Claude AI to interact with GitHub PRs and issues through a structured workflow:
 
-1. **Trigger Detection**: Uses `check-trigger.ts` to determine if Claude should respond based on comment/issue content
-2. **Context Gathering**: Fetches GitHub data (PRs, issues, comments) via `github-data-fetcher.ts` and formats it using `github-data-formatter.ts`
-3. **AI Integration**: Supports multiple Claude providers (Anthropic API, AWS Bedrock, Google Vertex AI)
-4. **Prompt Creation**: Generates context-rich prompts using `create-prompt.ts`
-5. **MCP Server Integration**: Installs and configures GitHub MCP server for extended functionality
+1. **Trigger Detection** (`src/github/validation/trigger.ts`): Validates if Claude should respond based on:
+   - Comment triggers (@claude, /claude, or custom trigger phrase)
+   - Issue assignment to Claude
+   - Label triggers (specified in configuration)
 
-### Key Components
+2. **Context Gathering** (`src/github/data/`):
+   - Fetches GitHub context using GraphQL API
+   - Downloads and encodes images from issues/PRs
+   - Formats data for Claude's consumption
 
-- **Trigger System**: Responds to `/claude` comments or issue assignments
-- **Authentication**: OIDC-based token exchange for secure GitHub interactions
-- **Cloud Integration**: Supports direct Anthropic API, AWS Bedrock, and Google Vertex AI
-- **GitHub Operations**: Creates branches, posts comments, and manages PRs/issues
+3. **Prompt Generation** (`src/create-prompt/`):
+   - Creates contextual prompts with GitHub data
+   - Includes user instructions and system prompts
+   - Handles different scenarios (issues vs PRs)
 
-### Project Structure
+4. **AI Processing**: Supports multiple Claude providers:
+   - Anthropic API (direct)
+   - OAuth authentication (Claude Max subscribers)
+   - AWS Bedrock
+   - Google Vertex AI
 
+5. **Action Execution** (`src/github/operations/`):
+   - Creates/updates comments with progress tracking
+   - Manages branches for issues
+   - Handles authentication via OIDC
+
+## Key Components
+
+### Entry Points
+- `src/entrypoints/prepare.ts`: Main script that validates triggers, creates initial comments, and sets up branches
+- `src/entrypoints/update-comment-link.ts`: Updates Claude's comment with job links after processing
+
+### Core Modules
+- **GitHub Integration** (`src/github/`):
+  - `api/`: GraphQL client and queries for GitHub data
+  - `data/`: Data fetching and formatting logic
+  - `operations/`: Branch creation, comment management
+  - `validation/`: Permission and trigger validation
+
+- **MCP Integration** (`src/mcp/`):
+  - Configures MCP servers for GitHub and filesystem access
+  - Enables Claude to perform GitHub operations directly
+
+### Authentication Flow
+1. OIDC token exchange for secure GitHub access
+2. Supports both GitHub App and PAT authentication
+3. Token permissions validated before operations
+4. OAuth authentication for Claude Max subscribers:
+   - Automatic token refresh when credentials expire
+   - Secure credential caching via GitHub Actions cache
+   - Token refresh handled by `.github/scripts/claude_token_refresh.ts`
+
+## Testing
+
+The codebase includes comprehensive tests in the `test/` directory:
+- Unit tests for all major components
+- Integration tests for sanitization and encoding
+- Test files follow the pattern `*.test.ts`
+
+Run a specific test:
+```bash
+bun test github-data-fetcher  # Run tests matching pattern
 ```
-src/
-├── check-trigger.ts        # Determines if Claude should respond
-├── create-prompt.ts        # Generates contextual prompts
-├── github-data-fetcher.ts  # Retrieves GitHub data
-├── github-data-formatter.ts # Formats GitHub data for prompts
-├── install-mcp-server.ts  # Sets up GitHub MCP server
-├── update-comment-with-link.ts # Updates comments with job links
-└── types/
-    └── github.ts          # TypeScript types for GitHub data
+
+## Important Implementation Details
+
+- The action creates feature branches from issues automatically
+- For PRs, it pushes directly to the PR branch
+- Comments are updated dynamically with checkboxes showing progress
+- All file paths must be sanitized before use in operations
+- Image URLs are downloaded and base64 encoded for Claude
+- The action uses GitHub's GraphQL API for efficient data fetching
+
+## OAuth Authentication Implementation
+
+The action supports OAuth authentication for Claude Max subscribers:
+
+### Key Files
+- `.github/workflows/claude-oauth-login.yml`: OAuth login workflow for initial authentication
+- `.github/scripts/claude_token_refresh.ts`: Handles automatic token refresh
+- `action.yml`: OAuth parameters and credential loading logic
+
+### OAuth Flow
+1. **Initial Authentication**: Users run the OAuth login workflow to authenticate
+2. **Credential Caching**: OAuth tokens are cached using GitHub Actions cache
+3. **Automatic Refresh**: Tokens are refreshed automatically when they expire (60-minute buffer)
+4. **Fallback Support**: Can use direct OAuth credentials from repository secrets
+
+### Getting OAuth Credentials
+```bash
+# Linux/Ubuntu
+cat ~/.claude/.credentials.json
+
+# macOS
+security find-generic-password -s "Claude Code-credentials" -w
+
+# Windows
+type %USERPROFILE%\.claude\.credentials.json
 ```
-
-## Important Notes
-
-- Actions are triggered by `@claude` comments or issue assignment unless a different trigger_phrase is specified
-- The action creates branches for issues and pushes to PR branches directly
-- All actions create OIDC tokens for secure authentication
-- Progress is tracked through dynamic comment updates with checkboxes

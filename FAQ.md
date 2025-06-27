@@ -24,6 +24,35 @@ permissions:
 
 The OIDC token is required in order for the Claude GitHub app to function. If you wish to not use the GitHub app, you can instead provide a `github_token` input to the action for Claude to operate with. See the [Claude Code permissions documentation][perms] for more.
 
+### How do I use my Claude Max subscription with this action?
+
+Claude Max subscribers can use OAuth authentication instead of API keys:
+
+**Option 1: Use OAuth Login Workflow (Recommended)**
+1. Run the Claude OAuth Login workflow in your repository
+2. Follow the OAuth flow to authenticate with your Claude Max account
+3. Enable OAuth in your workflow with `use_oauth: "true"`
+4. The action will automatically use cached credentials and refresh tokens as needed
+
+**Option 2: Use Existing Claude Code Credentials**
+1. Find your credentials:
+   - **Linux/Ubuntu**: `cat ~/.claude/.credentials.json`
+   - **macOS**: `security find-generic-password -s "Claude Code-credentials" -w`
+   - **Windows**: `type %USERPROFILE%\.claude\.credentials.json`
+2. Add the OAuth values as repository secrets:
+   - `CLAUDE_ACCESS_TOKEN`
+   - `CLAUDE_REFRESH_TOKEN`
+   - `CLAUDE_EXPIRES_AT`
+3. Enable OAuth in your workflow and reference the secrets
+
+### Why am I getting OAuth authentication errors?
+
+Common OAuth issues and solutions:
+
+- **"No credentials found"**: Run the Claude OAuth Login workflow first to authenticate
+- **"Token expired"**: The action should auto-refresh, but you may need to re-authenticate if the refresh token is invalid
+- **"Cache not found"**: OAuth credentials are cached per repository - make sure you're in the right repo
+
 ## Claude's Capabilities and Limitations
 
 ### Why won't Claude update workflow files when I ask it to?

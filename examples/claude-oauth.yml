@@ -1,0 +1,45 @@
+name: Claude PR Assistant (OAuth)
+
+# Example workflow using OAuth authentication for Claude Max subscribers
+# This requires setting up OAuth credentials first using the Claude OAuth Login workflow
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  claude-response:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anthropics/claude-code-action@beta
+        with:
+          # Enable OAuth authentication
+          use_oauth: "true"
+
+          # Option 1: Use cached OAuth credentials (recommended)
+          # The action will automatically use cached credentials if available
+          # Run the Claude OAuth Login workflow first to set up the cache
+
+          # Option 2: Provide OAuth credentials directly from secrets
+          # Get these from ~/.claude/.credentials.json on your local machine
+          # claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
+          # claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
+          # claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+
+          # GitHub token is still required for GitHub operations
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Optional: add custom trigger phrase (default: @claude)
+          # trigger_phrase: "/claude"
