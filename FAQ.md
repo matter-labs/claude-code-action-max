@@ -43,7 +43,15 @@ Claude Max subscribers can use OAuth authentication instead of API keys:
    - `CLAUDE_ACCESS_TOKEN`
    - `CLAUDE_REFRESH_TOKEN`
    - `CLAUDE_EXPIRES_AT`
-3. Enable OAuth in your workflow and reference the secrets
+3. Enable OAuth in your workflow and reference the secrets:
+   ```yaml
+   - uses: anthropics/claude-code-action@beta
+     with:
+       use_oauth: "true"
+       claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
+       claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
+       claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+   ```
 
 ### Why am I getting OAuth authentication errors?
 
