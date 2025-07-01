@@ -2,7 +2,7 @@
 
 # Claude Code Action
 
-A general-purpose [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This action listens for a trigger phrase in comments and activates Claude act on the request. It supports multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI.
+A general-purpose [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This action listens for a trigger phrase in comments and activates Claude act on the request. It supports multiple authentication methods including Anthropic direct API, OAuth for Claude Max subscribers, Amazon Bedrock, and Google Vertex AI.
 
 ## Features
 
@@ -32,6 +32,73 @@ This command will guide you through setting up the GitHub app and required secre
 1. Install the Claude GitHub app to your repository: https://github.com/apps/claude
 2. Add `ANTHROPIC_API_KEY` to your repository secrets ([Learn how to use secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions))
 3. Copy the workflow file from [`examples/claude.yml`](./examples/claude.yml) into your repository's `.github/workflows/`
+
+### OAuth Setup (Claude Max Subscribers)
+
+Claude Max subscribers can use their subscription in GitHub Actions through OAuth authentication.
+
+**Note**: OAuth support currently requires using a forked version of the base action. This will be updated once the official action supports OAuth.
+
+#### Option 1: Use OAuth Login Workflow (Strongly Recommended)
+
+**Why this is preferred**: No PAT needed, automatic token refresh works out of the box.
+
+1. Install the Claude GitHub app to your repository: https://github.com/apps/claude
+2. Run the OAuth login workflow to authenticate:
+   - Go to Actions → Claude OAuth Login → Run workflow
+   - Follow the instructions to complete OAuth authentication
+   - The workflow will cache your credentials securely
+3. Copy the workflow file from [`examples/claude-oauth.yml`](./examples/claude-oauth.yml) into your repository's `.github/workflows/`
+4. **Important**: Use `use_oauth: "true"` WITHOUT specifying token secrets - let the action use cached credentials
+
+#### Option 2: Use Existing Claude Code Credentials (Complex Setup)
+
+**⚠️ Warning**: This method requires a PAT for auto-refresh due to GitHub security limitations.
+
+If you already have Claude Code installed locally:
+
+1. Install the Claude GitHub app to your repository: https://github.com/apps/claude
+2. Get your OAuth credentials from your local Claude Code installation:
+   ```bash
+   # On Linux/Ubuntu
+   cat ~/.claude/.credentials.json
+
+   # On macOS - credentials are in Keychain
+   # Try this command (you may be prompted for your password):
+   security find-generic-password -s "Claude Code-credentials" -w
+   # Or open Keychain Access app and search for "Claude"
+
+   # On Windows
+   type %USERPROFILE%\.claude\.credentials.json
+   ```
+3. Create a GitHub Personal Access Token (PAT) for auto-refresh:
+   - Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+   - Generate new token with:
+     - Repository access: Select your specific repository
+     - Repository permissions: `Secrets` → `Write`
+   - Note: GitHub Actions cannot update secrets with GITHUB_TOKEN (security limitation)
+4. Add these secrets to your repository:
+   - `CLAUDE_ACCESS_TOKEN`: Value from `claudeAiOauth.accessToken`
+   - `CLAUDE_REFRESH_TOKEN`: Value from `claudeAiOauth.refreshToken`
+   - `CLAUDE_EXPIRES_AT`: Value from `claudeAiOauth.expiresAt`
+   - `SECRETS_ADMIN_PAT`: Your GitHub PAT (for auto-refresh)
+5. Use the OAuth configuration in your workflow (see [`examples/claude-oauth.yml`](./examples/claude-oauth.yml))
+
+**Benefits of OAuth authentication:**
+- Use your Claude Max subscription in GitHub Actions
+- Automatic token refresh when credentials expire
+- Secure credential caching across workflow runs
+- No need to manage API keys
+
+**Important Notes about OAuth:**
+- **Option 1 (Cache-based)**: Tokens are automatically refreshed and stored in GitHub Actions cache
+  - The cache persists for 7 days of inactivity
+  - If workflows don't run for >7 days, re-run the OAuth login workflow
+- **Option 2 (Secrets-based)**: To enable auto-refresh of secrets, you must:
+  1. Create a GitHub Personal Access Token (PAT) with `repo` and `secrets:write` permissions
+  2. Add it as `SECRETS_ADMIN_PAT` in your repository secrets
+  3. Include `secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT }}` in your workflow
+  - Without this PAT, tokens in secrets will NOT be refreshed and will expire
 
 ## 📚 FAQ
 
@@ -80,7 +147,7 @@ jobs:
 
 | Input                 | Description                                                                                                          | Required | Default   |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------- | -------- | --------- |
-| `anthropic_api_key`   | Anthropic API key (required for direct API, not needed for Bedrock/Vertex)                                           | No\*     | -         |
+| `anthropic_api_key`   | Anthropic API key (required for direct API, not needed for Bedrock/Vertex/OAuth)                                     | No\*     | -         |
 | `direct_prompt`       | Direct prompt for Claude to execute automatically without needing a trigger (for automated workflows)                | No       | -         |
 | `base_branch`         | The base branch to use for creating new branches (e.g., 'main', 'develop')                                           | No       | -         |
 | `max_turns`           | Maximum number of conversation turns Claude can take (limits back-and-forth exchanges)                               | No       | -         |
@@ -90,6 +157,11 @@ jobs:
 | `anthropic_model`     | **DEPRECATED**: Use `model` instead. Kept for backward compatibility.                                                | No       | -         |
 | `use_bedrock`         | Use Amazon Bedrock with OIDC authentication instead of direct Anthropic API                                          | No       | `false`   |
 | `use_vertex`          | Use Google Vertex AI with OIDC authentication instead of direct Anthropic API                                        | No       | `false`   |
+| `use_oauth`           | Use Claude AI OAuth authentication instead of API key (for Claude Max subscribers)                                   | No       | `false`   |
+| `claude_access_token` | Claude AI OAuth access token (required when use_oauth is true)                                                       | No       | -         |
+| `claude_refresh_token`| Claude AI OAuth refresh token (required when use_oauth is true)                                                      | No       | -         |
+| `claude_expires_at`   | Claude AI OAuth token expiration timestamp (required when use_oauth is true)                                         | No       | -         |
+| `secrets_admin_pat`   | GitHub PAT with `repo` and `secrets:write` permissions (required for auto-refresh when using OAuth with secrets)     | No       | -         |
 | `allowed_tools`       | Additional tools for Claude to use (the base GitHub tools will always be included)                                   | No       | ""        |
 | `disallowed_tools`    | Tools that Claude should never use                                                                                   | No       | ""        |
 | `custom_instructions` | Additional custom instructions to include in the prompt for Claude                                                   | No       | ""        |
@@ -413,11 +485,12 @@ Use a specific Claude model:
 
 ## Cloud Providers
 
-You can authenticate with Claude using any of these three methods:
+You can authenticate with Claude using any of these methods:
 
 1. Direct Anthropic API (default)
-2. Amazon Bedrock with OIDC authentication
-3. Google Vertex AI with OIDC authentication
+2. OAuth authentication for Claude Max subscribers
+3. Amazon Bedrock with OIDC authentication
+4. Google Vertex AI with OIDC authentication
 
 For detailed setup instructions for AWS Bedrock and Google Vertex AI, see the [official documentation](https://docs.anthropic.com/en/docs/claude-code/github-actions#using-with-aws-bedrock-%26-google-vertex-ai).
 
@@ -436,6 +509,14 @@ Use provider-specific model names based on your chosen provider:
 - uses: anthropics/claude-code-action@beta
   with:
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    # ... other inputs
+
+# For OAuth authentication (Claude Max subscribers)
+- uses: anthropics/claude-code-action@beta
+  with:
+    use_oauth: "true"
+    # Credentials are loaded from cache automatically
+    # Run Claude OAuth Login workflow first to set up
     # ... other inputs
 
 # For Amazon Bedrock with OIDC
