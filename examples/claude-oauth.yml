@@ -28,15 +28,16 @@ jobs:
           # Enable OAuth authentication
           use_oauth: "true"
 
-          # Option 1: Use cached OAuth credentials (recommended)
-          # The action will automatically use cached credentials if available
+          # IMPORTANT: Do NOT specify token secrets here!
+          # The action will automatically use cached credentials from the OAuth login workflow
           # Run the Claude OAuth Login workflow first to set up the cache
 
-          # Option 2: Provide OAuth credentials directly from secrets
-          # Get these from ~/.claude/.credentials.json on your local machine
+          # Option 2: If using secrets, you MUST provide a PAT for auto-refresh
+          # Without SECRETS_ADMIN_PAT, tokens will expire and won't be refreshed!
           # claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
           # claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
           # claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+          # secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT }}  # REQUIRED for auto-refresh!
 
           # GitHub token is still required for GitHub operations
           github_token: ${{ secrets.GITHUB_TOKEN }}

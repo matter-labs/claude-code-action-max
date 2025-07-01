@@ -85,6 +85,10 @@ inputs:
     description: "Claude AI OAuth token expiration timestamp (required when use_oauth is true)"
     required: false
     default: ""
+  secrets_admin_pat:
+    description: "Personal Access Token with secrets:write permission to refresh OAuth tokens (required for auto-refresh when use_oauth is true)"
+    required: false
+    default: ""
 
   max_turns:
     description: "Maximum number of conversation turns"
@@ -225,11 +229,15 @@ runs:
         claude_access_token: ${{ steps.load-oauth-cache.outputs.claude_access_token || inputs.claude_access_token }}
         claude_refresh_token: ${{ steps.load-oauth-cache.outputs.claude_refresh_token || inputs.claude_refresh_token }}
         claude_expires_at: ${{ steps.load-oauth-cache.outputs.claude_expires_at || inputs.claude_expires_at }}
+        secrets_admin_pat: ${{ inputs.secrets_admin_pat }}
         claude_env: ${{ inputs.claude_env }}
       env:
         # Model configuration
         ANTHROPIC_MODEL: ${{ inputs.model || inputs.anthropic_model }}
         GITHUB_TOKEN: ${{ steps.prepare.outputs.GITHUB_TOKEN }}
+
+        # OAuth configuration
+        SECRETS_ADMIN_PAT: ${{ inputs.secrets_admin_pat }}
 
         # Provider configuration
         ANTHROPIC_BASE_URL: ${{ env.ANTHROPIC_BASE_URL }}

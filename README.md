@@ -39,15 +39,22 @@ Claude Max subscribers can use their subscription in GitHub Actions through OAut
 
 **Note**: OAuth support currently requires using a forked version of the base action. This will be updated once the official action supports OAuth.
 
-#### Option 1: Use OAuth Login Workflow (Recommended)
+#### Option 1: Use OAuth Login Workflow (Strongly Recommended)
+
+**Why this is preferred**: No PAT needed, automatic token refresh works out of the box.
+
 1. Install the Claude GitHub app to your repository: https://github.com/apps/claude
 2. Run the OAuth login workflow to authenticate:
    - Go to Actions → Claude OAuth Login → Run workflow
    - Follow the instructions to complete OAuth authentication
    - The workflow will cache your credentials securely
 3. Copy the workflow file from [`examples/claude-oauth.yml`](./examples/claude-oauth.yml) into your repository's `.github/workflows/`
+4. **Important**: Use `use_oauth: "true"` WITHOUT specifying token secrets - let the action use cached credentials
 
-#### Option 2: Use Existing Claude Code Credentials
+#### Option 2: Use Existing Claude Code Credentials (Complex Setup)
+
+**⚠️ Warning**: This method requires a PAT for auto-refresh due to GitHub security limitations.
+
 If you already have Claude Code installed locally:
 
 1. Install the Claude GitHub app to your repository: https://github.com/apps/claude
@@ -64,17 +71,34 @@ If you already have Claude Code installed locally:
    # On Windows
    type %USERPROFILE%\.claude\.credentials.json
    ```
-3. Add these secrets to your repository:
+3. Create a GitHub Personal Access Token (PAT) for auto-refresh:
+   - Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+   - Generate new token with:
+     - Repository access: Select your specific repository
+     - Repository permissions: `Secrets` → `Write`
+   - Note: GitHub Actions cannot update secrets with GITHUB_TOKEN (security limitation)
+4. Add these secrets to your repository:
    - `CLAUDE_ACCESS_TOKEN`: Value from `claudeAiOauth.accessToken`
    - `CLAUDE_REFRESH_TOKEN`: Value from `claudeAiOauth.refreshToken`
    - `CLAUDE_EXPIRES_AT`: Value from `claudeAiOauth.expiresAt`
-4. Use the OAuth configuration in your workflow (see [`examples/claude-oauth.yml`](./examples/claude-oauth.yml))
+   - `SECRETS_ADMIN_PAT`: Your GitHub PAT (for auto-refresh)
+5. Use the OAuth configuration in your workflow (see [`examples/claude-oauth.yml`](./examples/claude-oauth.yml))
 
 **Benefits of OAuth authentication:**
 - Use your Claude Max subscription in GitHub Actions
 - Automatic token refresh when credentials expire
 - Secure credential caching across workflow runs
 - No need to manage API keys
+
+**Important Notes about OAuth:**
+- **Option 1 (Cache-based)**: Tokens are automatically refreshed and stored in GitHub Actions cache
+  - The cache persists for 7 days of inactivity
+  - If workflows don't run for >7 days, re-run the OAuth login workflow
+- **Option 2 (Secrets-based)**: To enable auto-refresh of secrets, you must:
+  1. Create a GitHub Personal Access Token (PAT) with `repo` and `secrets:write` permissions
+  2. Add it as `SECRETS_ADMIN_PAT` in your repository secrets
+  3. Include `secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT }}` in your workflow
+  - Without this PAT, tokens in secrets will NOT be refreshed and will expire
 
 ## 📚 FAQ
 
@@ -137,6 +161,7 @@ jobs:
 | `claude_access_token` | Claude AI OAuth access token (required when use_oauth is true)                                                       | No       | -         |
 | `claude_refresh_token`| Claude AI OAuth refresh token (required when use_oauth is true)                                                      | No       | -         |
 | `claude_expires_at`   | Claude AI OAuth token expiration timestamp (required when use_oauth is true)                                         | No       | -         |
+| `secrets_admin_pat`   | GitHub PAT with `repo` and `secrets:write` permissions (required for auto-refresh when using OAuth with secrets)     | No       | -         |
 | `allowed_tools`       | Additional tools for Claude to use (the base GitHub tools will always be included)                                   | No       | ""        |
 | `disallowed_tools`    | Tools that Claude should never use                                                                                   | No       | ""        |
 | `custom_instructions` | Additional custom instructions to include in the prompt for Claude                                                   | No       | ""        |

@@ -51,6 +51,7 @@ Claude Max subscribers can use OAuth authentication instead of API keys:
        claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
        claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
        claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+       secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT }}  # REQUIRED for auto-refresh!
    ```
 
 ### Why am I getting OAuth authentication errors?
@@ -60,6 +61,7 @@ Common OAuth issues and solutions:
 - **"No credentials found"**: Run the Claude OAuth Login workflow first to authenticate
 - **"Token expired"**: The action should auto-refresh, but you may need to re-authenticate if the refresh token is invalid
 - **"Cache not found"**: OAuth credentials are cached per repository - make sure you're in the right repo
+- **"Credentials in secrets expired"**: To enable auto-refresh of secrets, you MUST provide a GitHub PAT with `secrets:write` permissions as `SECRETS_ADMIN_PAT`. Without this, tokens will expire and won't be refreshed
 
 ## Claude's Capabilities and Limitations
 
